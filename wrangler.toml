@@ -2,11 +2,8 @@ name = "lytix-auth"
 compatibility_date = "2025-04-01"
 pages_build_output_dir = "public"
 
-# Pages 不支持 wrangler.toml 配置 D1 绑定
-# D1 和变量请在 Cloudflare Dashboard → Pages → 项目 → Settings → Functions 中配置
-#
-# 需要绑定的资源：
-#   D1 数据库: lytix-auth (binding = "DB")
-#   变量:
-#     SITE_URL = "https://你的域名.pages.dev"
-#     JWT_SECRET = "随机字符串"
+# D1 数据库绑定（填入 database_id 后推送即可生效）
+[[d1_databases]]
+binding = "DB"
+database_name = "lytix-auth"
+database_id = "b5ee1f00-5bf1-4cd1-88be-a7caa91203a9"
