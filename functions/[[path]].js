@@ -1,5 +1,6 @@
 // ═══════════════════════════════════════════════════════════════
-// Lytix Auth - Cloudflare Workers + D1
+// Lytix Auth - Cloudflare Pages Function
+// GitHub 推送 → Cloudflare Pages 自动部署
 // ═══════════════════════════════════════════════════════════════
 
 // ── 工具函数 ──────────────────────────────────────────────────
@@ -74,7 +75,6 @@ async function verifyJWT(token, secret) {
 // ── 从请求获取用户 ─────────────────────────────────────────
 
 async function getUserFromRequest(request, env) {
-  // 1. Cookie session
   const cookie = request.headers.get('Cookie') || ''
   const match = cookie.match(/session=([^;]+)/)
   if (match) {
@@ -85,7 +85,6 @@ async function getUserFromRequest(request, env) {
     }
   }
 
-  // 2. Bearer Token (API Key)
   const auth = request.headers.get('Authorization') || ''
   if (auth.startsWith('Bearer ')) {
     const key = auth.slice(7).trim()
@@ -230,7 +229,7 @@ function indexPage(user) {
   return page('首页', `
     <section class="hero">
       <h1>LYTIX AUTH</h1>
-      <p>轻量级登录认证系统。基于 Cloudflare Workers + D1 构建。</p>
+      <p>轻量级登录认证系统。基于 Cloudflare Pages + D1 构建。</p>
       <div class="hero-actions">${btns}</div>
     </section>
     <section class="features">
@@ -362,7 +361,9 @@ async function apikeysPage(user, env, freshKeyId) {
   for (const k of rows) {
     const masked = k.key.slice(0, 8) + '*'.repeat(28) + k.key.slice(-4)
     const fresh = freshKeyId && freshKeyId == k.id
-    const displayKey = fresh ? `<code style="background:#222;padding:2px 6px;border-radius:4px;color:#f39c12;user-select:all">${escHtml(k.key)}</code><span style="color:#e74c3c;margin-left:6px">（请立即复制）</span>` : `<code style="background:#222;padding:2px 6px;border-radius:4px">${escHtml(masked)}</code>`
+    const displayKey = fresh
+      ? `<code style="background:#222;padding:2px 6px;border-radius:4px;color:#f39c12;user-select:all">${escHtml(k.key)}</code><span style="color:#e74c3c;margin-left:6px">（请立即复制）</span>`
+      : `<code style="background:#222;padding:2px 6px;border-radius:4px">${escHtml(masked)}</code>`
 
     keyList += `
       <div style="padding:16px 0;border-bottom:1px solid #333;display:flex;align-items:center;justify-content:space-between;gap:12px">
@@ -420,212 +421,156 @@ async function apikeysPage(user, env, freshKeyId) {
 }
 
 
-// ── 路由处理 ──────────────────────────────────────────────────
+// ── Pages Function ────────────────────────────────────────────
+// 这是唯一与 Workers 版本不同的地方
 
-export default {
-  async fetch(request, env) {
+export async function onRequest(context) {
+  const { request, env } = context
 
-    const url = new URL(request.url)
-    const path = url.pathname
-    const method = request.method
-    const user = await getUserFromRequest(request, env)
+  const url = new URL(request.url)
+  const path = url.pathname
+  const method = request.method
+  const user = await getUserFromRequest(request, env)
 
-    // ── 首页 ──
-    if (path === '/' && method === 'GET') {
-      return html(indexPage(user))
-    }
+  // ── 首页 ──
+  if (path === '/' && method === 'GET') {
+    return html(indexPage(user))
+  }
 
-    // ── 登录 ──
-    if (path === '/login') {
-      if (user) return redirect('/dashboard')
-
-      if (method === 'POST') {
-        const form = await request.formData()
-        const username = (form.get('username') || '').trim()
-        const password = form.get('password') || ''
-
-        if (!username || !password) return html(loginPage(flash('请填写用户名和密码', 'danger'), user))
-
-        const row = await env.DB.prepare('SELECT * FROM users WHERE username = ?').bind(username).first()
-        if (!row || !(await verifyPassword(password, row.password_hash))) {
-          return html(loginPage(flash('用户名或密码错误', 'danger'), user))
-        }
-
-        if (!row.verified) {
-          return html(loginPage('', user, true, row.email))
-        }
-
-        const token = await createJWT({ user_id: row.id, username: row.username }, env.JWT_SECRET)
-        await env.DB.prepare('UPDATE users SET last_login = ? WHERE id = ?').bind(now(), row.id).run()
-
-        return new Response(null, { status: 302, headers: { 'Location': url.searchParams.get('next') || '/dashboard', 'Set-Cookie': setSessionCookie(token) } })
-      }
-
-      return html(loginPage('', user))
-    }
-
-    // ── 注册 ──
-    if (path === '/register') {
-      if (user) return redirect('/dashboard')
-
-      if (method === 'POST') {
-        const form = await request.formData()
-        const username = (form.get('username') || '').trim()
-        const email = (form.get('email') || '').trim()
-        const password = form.get('password') || ''
-        const confirm = form.get('confirm') || ''
-
-        const errors = []
-        if (username.length < 3) errors.push('用户名至少 3 个字符')
-        if (!email.includes('@')) errors.push('请输入有效的邮箱地址')
-        if (password.length < 6) errors.push('密码至少 6 个字符')
-        if (password !== confirm) errors.push('两次密码不一致')
-        if (errors.length) return html(registerPage(errors.map(e => flash(e, 'danger')).join(''), user))
-
-        const existingUser = await env.DB.prepare('SELECT id FROM users WHERE username = ? OR email = ?').bind(username, email).first()
-        if (existingUser) return html(registerPage(flash('用户名或邮箱已被使用', 'danger'), user))
-
-        const hash = await hashPassword(password)
-        const vToken = uuid()
-        const expires = hoursLater(24)
-
-        await env.DB.prepare(
-          'INSERT INTO users (username, email, password_hash, verified, verify_token, verify_token_expires) VALUES (?, ?, ?, 0, ?, ?)'
-        ).bind(username, email, hash, vToken, expires).run()
-
-        const verifyUrl = `${env.SITE_URL}/verify?token=${vToken}`
-        console.log(`验证链接: ${verifyUrl}`)
-
-        return html(loginPage(
-          flash(`注册成功！开发模式验证链接：<a href="${verifyUrl}" style="color:#fff">${verifyUrl}</a>`, 'success'), user
-        ))
-      }
-
-      return html(registerPage('', user))
-    }
-
-    // ── 邮箱验证 ──
-    if (path === '/verify' && method === 'GET') {
-      const token = url.searchParams.get('token') || ''
-      if (!token) return html(loginPage(flash('验证链接无效', 'danger'), user))
-
-      const row = await env.DB.prepare('SELECT id, verify_token_expires FROM users WHERE verify_token = ?').bind(token).first()
-      if (!row) return html(loginPage(flash('验证链接无效或已过期', 'danger'), user))
-
-      if (new Date() > new Date(row.verify_token_expires)) {
-        return html(loginPage(flash('验证链接已过期，请重新发送', 'danger'), user))
-      }
-
-      await env.DB.prepare('UPDATE users SET verified = 1, verify_token = NULL, verify_token_expires = NULL WHERE id = ?').bind(row.id).run()
-      return html(loginPage(flash('邮箱验证成功，请登录', 'success'), user))
-    }
-
-    // ── 重新发送验证 ──
-    if (path === '/resend-verification') {
-      if (method === 'POST') {
-        const form = await request.formData()
-        const email = (form.get('email') || '').trim()
-        const row = await env.DB.prepare('SELECT id, verified FROM users WHERE email = ?').bind(email).first()
-
-        if (row && !row.verified) {
-          const vToken = uuid()
-          const expires = hoursLater(24)
-          await env.DB.prepare('UPDATE users SET verify_token = ?, verify_token_expires = ? WHERE id = ?').bind(vToken, expires, row.id).run()
-          const verifyUrl = `${env.SITE_URL}/verify?token=${vToken}`
-          console.log(`重新发送验证链接: ${verifyUrl}`)
-          return html(loginPage(flash(`验证邮件已重新发送。链接：<a href="${verifyUrl}" style="color:#fff">${verifyUrl}</a>`, 'success'), user))
-        }
-        return html(loginPage(flash('该邮箱未注册或已验证', 'info'), user))
-      }
-      return html(resendVerifyPage('', user))
-    }
-
-    // ── Dashboard ──
-    if (path === '/dashboard') {
-      if (!user) return redirect('/login')
-      return html(dashboardPage(user))
-    }
-
-    // ── 个人页 ──
-    if (path === '/profile') {
-      if (!user) return redirect('/login')
-      return html(profilePage(user))
-    }
-
-    // ── 登出 ──
-    if (path === '/logout') {
-      return new Response(null, { status: 302, headers: { 'Location': '/', 'Set-Cookie': clearSessionCookie() } })
-    }
-
-    // ── API 密钥管理 ──
-    if (path === '/settings/apikeys') {
-      if (!user) return redirect('/login')
-
-      if (method === 'POST') {
-        const form = await request.formData()
-        const name = (form.get('name') || '').trim()
-        const accepted = form.get('disclaimer') === 'on'
-
-        if (!name) return redirect('/settings/apikeys')
-        if (!accepted) return redirect('/settings/apikeys')
-
-        const key = 'lytx_' + uuid() + uuid().slice(0, 16)
-        const result = await env.DB.prepare(
-          'INSERT INTO api_keys (user_id, key, name, is_active) VALUES (?, ?, ?, 1)'
-        ).bind(user.id, key, name).run()
-
-        return redirect(`/settings/apikeys?show=${result.meta.last_row_id}`)
-      }
-
-      const showId = parseInt(url.searchParams.get('show')) || null
-      return await apikeysPage(user, env, showId)
-    }
-
-    // ── 删除 API 密钥 ──
-    const deleteMatch = path.match(/^\/settings\/apikeys\/(\d+)\/delete$/)
-    if (deleteMatch && method === 'POST') {
-      if (!user) return redirect('/login')
-      const keyId = parseInt(deleteMatch[1])
-      const key = await env.DB.prepare('SELECT id, user_id FROM api_keys WHERE id = ?').bind(keyId).first()
-      if (key && key.user_id === user.id) {
-        await env.DB.prepare('UPDATE api_keys SET is_active = 0 WHERE id = ?').bind(keyId).run()
-      }
-      return redirect('/settings/apikeys')
-    }
-
-    // ── JSON API ──
-    if (path === '/api/status' && method === 'GET') {
-      if (user) {
-        return json({ authenticated: true, username: user.username, email: user.email, verified: !!user.verified })
-      }
-      return json({ authenticated: false })
-    }
-
-    if (path === '/api/login' && method === 'POST') {
-      const data = await request.json().catch(() => null)
-      if (!data) return json({ error: '请求体为空' }, 400)
-
-      const username = (data.username || '').trim()
-      const password = data.password || ''
-
-      if (!username || !password) return json({ error: '用户名和密码不能为空' }, 400)
-
+  // ── 登录 ──
+  if (path === '/login') {
+    if (user) return redirect('/dashboard')
+    if (method === 'POST') {
+      const form = await request.formData()
+      const username = (form.get('username') || '').trim()
+      const password = form.get('password') || ''
+      if (!username || !password) return html(loginPage(flash('请填写用户名和密码', 'danger'), user))
       const row = await env.DB.prepare('SELECT * FROM users WHERE username = ?').bind(username).first()
       if (!row || !(await verifyPassword(password, row.password_hash))) {
-        return json({ error: '用户名或密码错误' }, 401)
+        return html(loginPage(flash('用户名或密码错误', 'danger'), user))
       }
-
-      if (!row.verified) return json({ error: '邮箱未验证', verify_email: row.email }, 403)
-
-      await env.DB.prepare('UPDATE users SET last_login = ? WHERE id = ?').bind(now(), row.id).run()
+      if (!row.verified) return html(loginPage('', user, true, row.email))
       const token = await createJWT({ user_id: row.id, username: row.username }, env.JWT_SECRET)
-
-      return json({ ok: true, username: row.username, verified: true, token })
+      await env.DB.prepare('UPDATE users SET last_login = ? WHERE id = ?').bind(now(), row.id).run()
+      return new Response(null, { status: 302, headers: { 'Location': url.searchParams.get('next') || '/dashboard', 'Set-Cookie': setSessionCookie(token) } })
     }
-
-    // ── 404 ──
-    return new Response('Not Found', { status: 404 })
+    return html(loginPage('', user))
   }
+
+  // ── 注册 ──
+  if (path === '/register') {
+    if (user) return redirect('/dashboard')
+    if (method === 'POST') {
+      const form = await request.formData()
+      const username = (form.get('username') || '').trim()
+      const email = (form.get('email') || '').trim()
+      const password = form.get('password') || ''
+      const confirm = form.get('confirm') || ''
+      const errors = []
+      if (username.length < 3) errors.push('用户名至少 3 个字符')
+      if (!email.includes('@')) errors.push('请输入有效的邮箱地址')
+      if (password.length < 6) errors.push('密码至少 6 个字符')
+      if (password !== confirm) errors.push('两次密码不一致')
+      if (errors.length) return html(registerPage(errors.map(e => flash(e, 'danger')).join(''), user))
+      const existingUser = await env.DB.prepare('SELECT id FROM users WHERE username = ? OR email = ?').bind(username, email).first()
+      if (existingUser) return html(registerPage(flash('用户名或邮箱已被使用', 'danger'), user))
+      const hash = await hashPassword(password)
+      const vToken = uuid()
+      const expires = hoursLater(24)
+      await env.DB.prepare('INSERT INTO users (username, email, password_hash, verified, verify_token, verify_token_expires) VALUES (?, ?, ?, 0, ?, ?)').bind(username, email, hash, vToken, expires).run()
+      const verifyUrl = `${env.SITE_URL}/verify?token=${vToken}`
+      console.log(`验证链接: ${verifyUrl}`)
+      return html(loginPage(flash(`注册成功！开发模式验证链接：<a href="${verifyUrl}" style="color:#fff">${verifyUrl}</a>`, 'success'), user))
+    }
+    return html(registerPage('', user))
+  }
+
+  // ── 邮箱验证 ──
+  if (path === '/verify' && method === 'GET') {
+    const token = url.searchParams.get('token') || ''
+    if (!token) return html(loginPage(flash('验证链接无效', 'danger'), user))
+    const row = await env.DB.prepare('SELECT id, verify_token_expires FROM users WHERE verify_token = ?').bind(token).first()
+    if (!row) return html(loginPage(flash('验证链接无效或已过期', 'danger'), user))
+    if (new Date() > new Date(row.verify_token_expires)) return html(loginPage(flash('验证链接已过期，请重新发送', 'danger'), user))
+    await env.DB.prepare('UPDATE users SET verified = 1, verify_token = NULL, verify_token_expires = NULL WHERE id = ?').bind(row.id).run()
+    return html(loginPage(flash('邮箱验证成功，请登录', 'success'), user))
+  }
+
+  // ── 重新发送验证 ──
+  if (path === '/resend-verification') {
+    if (method === 'POST') {
+      const form = await request.formData()
+      const email = (form.get('email') || '').trim()
+      const row = await env.DB.prepare('SELECT id, verified FROM users WHERE email = ?').bind(email).first()
+      if (row && !row.verified) {
+        const vToken = uuid(); const expires = hoursLater(24)
+        await env.DB.prepare('UPDATE users SET verify_token = ?, verify_token_expires = ? WHERE id = ?').bind(vToken, expires, row.id).run()
+        const verifyUrl = `${env.SITE_URL}/verify?token=${vToken}`
+        console.log(`重新发送验证链接: ${verifyUrl}`)
+        return html(loginPage(flash(`验证邮件已重新发送。链接：<a href="${verifyUrl}" style="color:#fff">${verifyUrl}</a>`, 'success'), user))
+      }
+      return html(loginPage(flash('该邮箱未注册或已验证', 'info'), user))
+    }
+    return html(resendVerifyPage('', user))
+  }
+
+  // ── Dashboard ──
+  if (path === '/dashboard') { if (!user) return redirect('/login'); return html(dashboardPage(user)) }
+
+  // ── 个人页 ──
+  if (path === '/profile') { if (!user) return redirect('/login'); return html(profilePage(user)) }
+
+  // ── 登出 ──
+  if (path === '/logout') { return new Response(null, { status: 302, headers: { 'Location': '/', 'Set-Cookie': clearSessionCookie() } }) }
+
+  // ── API 密钥管理 ──
+  if (path === '/settings/apikeys') {
+    if (!user) return redirect('/login')
+    if (method === 'POST') {
+      const form = await request.formData()
+      const name = (form.get('name') || '').trim()
+      const accepted = form.get('disclaimer') === 'on'
+      if (!name || !accepted) return redirect('/settings/apikeys')
+      const key = 'lytx_' + uuid() + uuid().slice(0, 16)
+      const result = await env.DB.prepare('INSERT INTO api_keys (user_id, key, name, is_active) VALUES (?, ?, ?, 1)').bind(user.id, key, name).run()
+      return redirect(`/settings/apikeys?show=${result.meta.last_row_id}`)
+    }
+    const showId = parseInt(url.searchParams.get('show')) || null
+    return await apikeysPage(user, env, showId)
+  }
+
+  // ── 删除 API 密钥 ──
+  const deleteMatch = path.match(/^\/settings\/apikeys\/(\d+)\/delete$/)
+  if (deleteMatch && method === 'POST') {
+    if (!user) return redirect('/login')
+    const keyId = parseInt(deleteMatch[1])
+    const key = await env.DB.prepare('SELECT id, user_id FROM api_keys WHERE id = ?').bind(keyId).first()
+    if (key && key.user_id === user.id) await env.DB.prepare('UPDATE api_keys SET is_active = 0 WHERE id = ?').bind(keyId).run()
+    return redirect('/settings/apikeys')
+  }
+
+  // ── JSON API ──
+  if (path === '/api/status' && method === 'GET') {
+    if (user) return json({ authenticated: true, username: user.username, email: user.email, verified: !!user.verified })
+    return json({ authenticated: false })
+  }
+
+  if (path === '/api/login' && method === 'POST') {
+    const data = await request.json().catch(() => null)
+    if (!data) return json({ error: '请求体为空' }, 400)
+    const username = (data.username || '').trim()
+    const password = data.password || ''
+    if (!username || !password) return json({ error: '用户名和密码不能为空' }, 400)
+    const row = await env.DB.prepare('SELECT * FROM users WHERE username = ?').bind(username).first()
+    if (!row || !(await verifyPassword(password, row.password_hash))) return json({ error: '用户名或密码错误' }, 401)
+    if (!row.verified) return json({ error: '邮箱未验证', verify_email: row.email }, 403)
+    await env.DB.prepare('UPDATE users SET last_login = ? WHERE id = ?').bind(now(), row.id).run()
+    const token = await createJWT({ user_id: row.id, username: row.username }, env.JWT_SECRET)
+    return json({ ok: true, username: row.username, verified: true, token })
+  }
+
+  // ── 404 ──
+  return new Response('Not Found', { status: 404 })
 }
 
 
@@ -636,10 +581,7 @@ function html(body) {
 }
 
 function json(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { 'Content-Type': 'application/json;charset=utf-8' }
-  })
+  return new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json;charset=utf-8' } })
 }
 
 function redirect(location) {
