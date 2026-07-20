@@ -1,0 +1,7 @@
+flask>=3.0
+flask-login>=0.6
+flask-sqlalchemy>=3.0
+werkzeug>=3.0
+gunicorn>=20.0
+# MySQL（可选，PythonAnywhere 需要）
+pymysql>=1.1

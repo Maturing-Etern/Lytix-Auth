@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}个人信息 - Lytix Auth{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="card">
+    <h2 class="card-title">个人信息</h2>
+    <p class="card-subtitle">你的账号详情</p>
+
+    <div class="profile-field">
+      <span class="label">用户名</span>
+      <span class="value">{{ user.username }}</span>
+    </div>
+    <div class="profile-field">
+      <span class="label">邮箱</span>
+      <span class="value">{{ user.email }}</span>
+    </div>
+    <div class="profile-field">
+      <span class="label">注册时间</span>
+      <span class="value">{{ user.created_at.strftime('%Y-%m-%d %H:%M') if user.created_at else '-' }}</span>
+    </div>
+    <div class="profile-field">
+      <span class="label">上次登录</span>
+      <span class="value">{{ user.last_login.strftime('%Y-%m-%d %H:%M') if user.last_login else '首次登录' }}</span>
+    </div>
+    <div class="profile-field">
+      <span class="label">邮箱验证</span>
+      {% if user.verified %}
+        <span class="value" style="color:var(--success)">已验证</span>
+      {% else %}
+        <span class="value" style="color:var(--danger)">未验证</span>
+      {% endif %}
+    </div>
+    <div class="profile-field">
+      <span class="label">账号状态</span>
+      <span class="value" style="color:var(--success)">正常</span>
+    </div>
+
+    <div class="form-actions">
+      <a href="{{ url_for('dashboard') }}" class="btn btn-outline btn-sm" style="text-decoration:none">
+        返回控制台
+      </a>
+    </div>
+  </div>
+</div>
+{% endblock %}

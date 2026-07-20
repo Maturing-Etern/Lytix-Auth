@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}重新发送验证 - Lytix Auth{% endblock %}
+
+{% block content %}
+<div class="container">
+  <div class="card">
+    <h2 class="card-title">重新发送验证邮件</h2>
+    <p class="card-subtitle">输入注册时使用的邮箱地址</p>
+
+    <form method="POST" action="{{ url_for('resend_verification') }}">
+      <div class="form-group">
+        <label for="email">邮箱</label>
+        <input type="email" id="email" name="email" class="form-input"
+               placeholder="your@email.com" required autocomplete="email">
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn">重新发送</button>
+      </div>
+    </form>
+
+    <div class="auth-link">
+      <a href="{{ url_for('login') }}">返回登录</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}API 密钥 - Lytix Auth{% endblock %}
+
+{% block content %}
+<div class="container-wide" style="max-width:680px">
+
+  {# ── 创建新密钥 ── #}
+  <div class="card" style="margin-bottom:24px">
+    <h2 class="card-title">创建 API 密钥</h2>
+    <p class="card-subtitle">密钥可用于第三方服务以 API 方式访问你的账号</p>
+
+    <form method="POST" action="{{ url_for('apikeys') }}" onsubmit="return confirmCreate()">
+      <div class="form-group">
+        <label for="name">密钥名称</label>
+        <input type="text" id="name" name="name" class="form-input"
+               placeholder="例如：Lytix 查分器对接" required>
+      </div>
+
+      {# ── 免责声明 ── #}
+      <div style="background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius);padding:16px;margin-bottom:16px;font-size:12px;line-height:1.7;color:var(--text-secondary)">
+        <strong style="color:var(--warning);font-size:13px">⚠ 免责声明</strong>
+        <ul style="margin:8px 0 0 16px;padding:0">
+          <li>API 密钥拥有你账号的完整访问权限</li>
+          <li>请勿将密钥泄露给第三方或上传至公开代码仓库</li>
+          <li>如发现密钥泄露，请立即在本页面停用该密钥</li>
+          <li>本系统不对因密钥泄露造成的损失承担责任</li>
+          <li>创建该密钥即表示你已阅读并同意以上条款</li>
+        </ul>
+      </div>
+
+      <div class="form-group" style="margin-bottom:12px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;font-size:13px;color:var(--text-primary)">
+          <input type="checkbox" name="disclaimer" required style="width:16px;height:16px;accent-color:var(--text-primary)">
+          我已阅读并同意免责声明
+        </label>
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn">创建密钥</button>
+      </div>
+    </form>
+  </div>
+
+  {# ── 已有密钥列表 ── #}
+  <div class="card">
+    <h2 class="card-title">已有密钥</h2>
+    <p class="card-subtitle">共 {{ keys | length }} 个密钥</p>
+
+    {% if keys %}
+      {% for key in keys %}
+      <div style="padding:16px 0;border-bottom:1px solid var(--border-color);display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:500;margin-bottom:4px">
+            {{ key.name }}
+            {% if not key.is_active %}
+              <span style="font-size:11px;color:var(--text-muted);background:var(--bg-input);padding:2px 8px;border-radius:4px;margin-left:6px">已停用</span>
+            {% endif %}
+          </div>
+          <div style="font-size:12px;color:var(--text-secondary)">
+            {% if fresh_key and fresh_key.id == key.id %}
+              <code style="background:var(--bg-input);padding:2px 6px;border-radius:4px;color:var(--warning);user-select:all">{{ key.key }}</code>
+              <span style="color:var(--danger);margin-left:6px">（请立即复制，关闭后将不可见）</span>
+            {% else %}
+              <code style="background:var(--bg-input);padding:2px 6px;border-radius:4px">{{ key.mask() }}</code>
+            {% endif %}
+          </div>
+          <div style="font-size:11px;color:var(--text-muted);margin-top:4px">
+            创建人: {{ current_user.username }} ·
+            创建于 {{ key.created_at.strftime('%Y-%m-%d %H:%M') }}
+            {% if key.last_used_at %}
+              · 上次使用: {{ key.last_used_at.strftime('%Y-%m-%d %H:%M') }}
+            {% endif %}
+          </div>
+        </div>
+        {% if key.is_active %}
+        <form method="POST" action="{{ url_for('delete_apikey', key_id=key.id) }}"
+              onsubmit="return confirm('确定停用密钥「{{ key.name }}」？此操作不可撤销。')">
+          <button type="submit" class="btn-logout" style="white-space:nowrap;padding:6px 12px;font-size:12px">停用</button>
+        </form>
+        {% endif %}
+      </div>
+      {% endfor %}
+    {% else %}
+      <div style="text-align:center;padding:40px 0;color:var(--text-muted);font-size:13px">
+        暂无 API 密钥，请在上方创建
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<script>
+function confirmCreate() {
+  return confirm('创建密钥后请立即复制保存，关闭后将无法再次查看完整密钥。\n\n确定创建吗？')
+}
+</script>
+{% endblock %}

@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Lytix Auth{% endblock %}</title>
+  <link rel="icon" href="{{ url_for('favicon') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <nav>
+    <div class="nav-brand">
+      <a href="{{ url_for('index') }}">LYTIX</a>
+    </div>
+    <ul class="nav-links">
+      {% if current_user.is_authenticated %}
+        <li class="nav-user">{{ current_user.username }}</li>
+        <li><a href="{{ url_for('dashboard') }}">控制台</a></li>
+        <li><a href="{{ url_for('profile') }}">个人</a></li>
+        <li><a href="{{ url_for('apikeys') }}">API 密钥</a></li>
+        <li>
+          <a href="{{ url_for('logout') }}" class="btn-logout" style="border-bottom:none">登出</a>
+        </li>
+      {% else %}
+        <li><a href="{{ url_for('login') }}">登录</a></li>
+        <li><a href="{{ url_for('register') }}">注册</a></li>
+      {% endif %}
+    </ul>
+  </nav>
+
+  <main>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="container" style="padding-top:20px;padding-bottom:0">
+          {% for category, message in messages %}
+            <div class="alert alert-{{ category }}">{{ message | safe }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer">
+    &copy; 2026 Lytix Auth System
+  </footer>
+</body>
+</html>

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Lytix Auth - 登录系统{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <h1>LYTIX AUTH</h1>
+  <p>轻量级登录认证系统。基于 Flask 构建，支持注册、登录、会话管理，可部署于 Cloudflare + PythonAnywhere。</p>
+  <div class="hero-actions">
+    {% if current_user.is_authenticated %}
+      <a href="{{ url_for('dashboard') }}" class="btn" style="width:auto;min-width:140px">进入控制台</a>
+    {% else %}
+      <a href="{{ url_for('register') }}" class="btn" style="width:auto;min-width:140px">注册</a>
+      <a href="{{ url_for('login') }}" class="btn btn-outline" style="width:auto;min-width:140px">登录</a>
+    {% endif %}
+  </div>
+</section>
+
+<section class="features">
+  <div class="feature">
+    <div class="feature-icon">&#9632;</div>
+    <h3>密码哈希</h3>
+    <p>使用 Werkzeug 的 pbkdf2:sha256 进行密码加密存储，不保存原文。</p>
+  </div>
+  <div class="feature">
+    <div class="feature-icon">&#9632;</div>
+    <h3>会话管理</h3>
+    <p>基于 Flask-Login 的安全会话机制，支持记住登录状态。</p>
+  </div>
+  <div class="feature">
+    <div class="feature-icon">&#9632;</div>
+    <h3>API 支持</h3>
+    <p>提供 RESTful JSON API 端点，可供前端 SPA 直接调用。</p>
+  </div>
+</section>
+{% endblock %}

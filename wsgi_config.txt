@@ -1,0 +1,23 @@
+# PythonAnywhere WSGI 配置文件
+# Web 面板 → Code → WSGI configuration file → 粘贴这个
+
+import sys
+import os
+
+# ① 把项目目录加到 Python 路径（换成你的用户名）
+YOUR_USERNAME = '你的用户名'
+PROJECT_PATH = f'/home/{YOUR_USERNAME}/login-app'
+if PROJECT_PATH not in sys.path:
+    sys.path.insert(0, PROJECT_PATH)
+
+# ② 环境变量（在 Web 页 → Environment variables 里设也可以）
+os.environ['DATABASE_URL'] = f'sqlite:////home/{YOUR_USERNAME}/login-app/data/users.db'
+os.environ['SITE_URL'] = f'https://{YOUR_USERNAME}.pythonanywhere.com'
+os.environ['SECRET_KEY'] = '换成随机字符串，生产环境不要用默认值'
+# 邮箱配置（可选）
+# os.environ['MAIL_USERNAME'] = '你的QQ号@qq.com'
+# os.environ['MAIL_PASSWORD'] = 'QQ邮箱授权码'
+# os.environ['MAIL_FROM'] = '你的QQ号@qq.com'
+
+# ③ 导入 Flask 应用
+from app import app as application

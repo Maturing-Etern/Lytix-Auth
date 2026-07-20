@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}控制台 - Lytix Auth{% endblock %}
+
+{% block content %}
+<div class="container-wide">
+  <h2 style="font-weight:500;font-size:20px;margin-bottom:6px">控制台</h2>
+  <p style="color:var(--text-secondary);margin-bottom:28px;font-size:13px">
+    欢迎回来，{{ user.username }}
+  </p>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-value">{{ user.id }}</div>
+      <div class="stat-label">用户 ID</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="font-size:14px;font-weight:400;font-family:var(--font-mono);color:var(--text-secondary)">
+        {{ user.created_at.strftime('%Y-%m-%d') if user.created_at else '-' }}
+      </div>
+      <div class="stat-label">注册日期</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" style="font-size:14px;font-weight:400;font-family:var(--font-mono);color:var(--text-secondary)">
+        {{ user.last_login.strftime('%Y-%m-%d %H:%M') if user.last_login else '首次登录' }}
+      </div>
+      <div class="stat-label">上次登录</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:20px">
+    <h3 style="font-size:14px;font-weight:500;margin-bottom:16px">账户信息</h3>
+    <div class="profile-field">
+      <span class="label">用户名</span>
+      <span class="value">{{ user.username }}</span>
+    </div>
+    <div class="profile-field">
+      <span class="label">邮箱</span>
+      <span class="value">{{ user.email }}</span>
+    </div>
+    <div class="profile-field">
+      <span class="label">邮箱验证</span>
+      {% if user.verified %}
+        <span class="value" style="color:var(--success)">已验证</span>
+      {% else %}
+        <span class="value" style="color:var(--danger)">未验证</span>
+      {% endif %}
+    </div>
+    <div class="profile-field">
+      <span class="label">密码</span>
+      <span class="value" style="color:var(--text-muted)">● ● ● ● ● ● ● ●</span>
+    </div>
+  </div>
+</div>
+{% endblock %}
