@@ -1,0 +1,14 @@
+name = "lytix-auth"
+main = "src/index.js"
+compatibility_date = "2025-04-01"
+
+# D1 数据库绑定（部署后需手动创建 DB）
+[[d1_databases]]
+binding = "DB"
+database_name = "lytix-auth"
+database_id = ""
+
+# 站点 URL（用于验证链接）
+[vars]
+SITE_URL = "https://lytix-auth.your-domain.workers.dev"
+JWT_SECRET = "change-this-to-a-random-string"
